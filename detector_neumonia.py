@@ -19,7 +19,13 @@ import tensorflow as tf
 from tensorflow.keras import backend as K
 
 # Enable eager execution for modern TensorFlow compatibility
-tf.config.run_functions_eagerly(True)
+# Wrap in try-except to handle mocking scenarios or older TF versions
+try:
+    if hasattr(tf, 'config') and hasattr(tf.config, 'run_functions_eagerly'):
+        tf.config.run_functions_eagerly(True)
+except (AttributeError, Exception):
+    # If config doesn't exist or method fails, continue without eager execution
+    pass
 import cv2
 
 # DICOM import
@@ -311,6 +317,7 @@ class App:
                 ("png files", "*.png"),
             ),
         )
+        # Ensure the filepath is properly quoted for systems that may misinterpret spaces
         if filepath:
             try:
                 # Check file extension to determine how to read

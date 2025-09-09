@@ -16,6 +16,11 @@ def setup_tensorflow_mocks():
     """Configura mocks mínimos para TensorFlow y Keras"""
     tf = types.SimpleNamespace()
     
+    # Mock config (needed for tf.config.run_functions_eagerly)
+    config = types.SimpleNamespace()
+    config.run_functions_eagerly = Mock()
+    tf.config = config
+    
     # Mock compat.v1
     compat_v1 = types.SimpleNamespace()
     compat_v1.disable_eager_execution = Mock()
@@ -85,38 +90,30 @@ class TestDetectorNeumonia:
         print(f"Imports faltantes identificados: {missing_imports}")
         print(f"Funciones faltantes identificadas: {missing_functions}")
     
-    @patch.dict('sys.modules')
     def test_can_import_with_mocks(self):
         """Test: El módulo puede importarse con los mocks apropiados"""
-        # Configurar mocks
-        tf_mock, K_mock = setup_tensorflow_mocks()
-        dicom_mock, model_fun_mock = setup_other_mocks()
+        # Since TensorFlow configuration is now safe, we can import directly
+        # Clear any previous imports to get a fresh import
+        if 'detector_neumonia' in sys.modules:
+            del sys.modules['detector_neumonia']
         
-        # Inyectar model_fun en el namespace global antes del import
-        import builtins
-        original_globals = getattr(builtins, '__import__')
+        # Add the project root to the path for importing
+        import os
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if current_dir not in sys.path:
+            sys.path.insert(0, current_dir)
         
-        def mock_import(name, globals=None, locals=None, fromlist=(), level=0):
-            if name == 'detector_neumonia':
-                # Importar el módulo
-                mod = original_globals(name, globals, locals, fromlist, level)
-                # Inyectar model_fun
-                setattr(mod, 'model_fun', model_fun_mock)
-                return mod
-            return original_globals(name, globals, locals, fromlist, level)
+        # Import should work now with the fixed configuration
+        mod = importlib.import_module('detector_neumonia')
         
-        with patch('builtins.__import__', side_effect=mock_import):
-            # Ahora el import debería funcionar
-            mod = importlib.import_module('detector_neumonia')
-            
-            # Verificar que las funciones están disponibles
-            assert hasattr(mod, 'preprocess')
-            assert hasattr(mod, 'predict') 
-            assert hasattr(mod, 'grad_cam')
-            assert hasattr(mod, 'read_dicom_file')
-            assert hasattr(mod, 'read_jpg_file')
-            assert hasattr(mod, 'App')
-            assert hasattr(mod, 'model_fun')  # Inyectada
+        # Verify that all expected functions are available
+        assert hasattr(mod, 'preprocess')
+        assert hasattr(mod, 'predict') 
+        assert hasattr(mod, 'grad_cam')
+        assert hasattr(mod, 'read_dicom_file')
+        assert hasattr(mod, 'read_jpg_file')
+        assert hasattr(mod, 'App')
+        assert hasattr(mod, 'model_fun')  # Should be defined in the module
     
     def test_preprocess_function_logic(self):
         """Test: Lógica de la función preprocess"""
