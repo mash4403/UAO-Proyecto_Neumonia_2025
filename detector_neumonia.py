@@ -18,8 +18,8 @@ import time
 import tensorflow as tf
 from tensorflow.keras import backend as K
 
-tf.compat.v1.disable_eager_execution()
-tf.compat.v1.experimental.output_all_intermediates(True)
+# Enable eager execution for modern TensorFlow compatibility
+tf.config.run_functions_eagerly(True)
 import cv2
 
 # DICOM import
@@ -49,16 +49,18 @@ def model_fun():
         UserWarning
     )
     
-    # Modelo mock simple para evitar errores
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+    # Modelo mock simple para evitar errores usando Functional API
+    from tensorflow.keras.models import Model
+    from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Input
     
-    model = Sequential([
-        Conv2D(64, (3, 3), activation='relu', input_shape=(512, 512, 1), name='conv10_thisone'),
-        MaxPooling2D(2, 2),
-        Flatten(),
-        Dense(3, activation='softmax')
-    ])
+    # Use Functional API to create model for better compatibility
+    inputs = Input(shape=(512, 512, 1))
+    x = Conv2D(64, (3, 3), activation='relu', name='conv10_thisone')(inputs)
+    x = MaxPooling2D(2, 2)(x)
+    x = Flatten()(x)
+    outputs = Dense(3, activation='softmax')(x)
+    
+    model = Model(inputs=inputs, outputs=outputs)
     
     # Compilar modelo mock
     model.compile(optimizer='adam', loss='categorical_crossentropy')
@@ -66,26 +68,55 @@ def model_fun():
     return model
 
 
-def grad_cam(array):
+def grad_cam(array, model=None):
+    """Generate Grad-CAM heatmap for the given array and model.
+    
+    Args:
+        array: Input image array
+        model: Pre-built keras model (optional, will create new one if None)
+    """
     img = preprocess(array)
-    model = model_fun()
-    preds = model.predict(img)
-    argmax = np.argmax(preds[0])
-    output = model.output[:, argmax]
+    
+    # Use provided model or create new one
+    if model is None:
+        model = model_fun()
+    
+    # Convert to tf.Tensor for gradient tape
+    img_tensor = tf.convert_to_tensor(img)
+    
+    # Get the last convolutional layer
     last_conv_layer = model.get_layer("conv10_thisone")
-    grads = K.gradients(output, last_conv_layer.output)[0]
-    pooled_grads = K.mean(grads, axis=(0, 1, 2))
-    iterate = K.function([model.input], [pooled_grads, last_conv_layer.output[0]])
-    pooled_grads_value, conv_layer_output_value = iterate(img)
-    for filters in range(64):
-        conv_layer_output_value[:, :, filters] *= pooled_grads_value[filters]
-    # creating the heatmap
-    heatmap = np.mean(conv_layer_output_value, axis=-1)
-    heatmap = np.maximum(heatmap, 0)  # ReLU
-    heatmap /= np.max(heatmap)  # normalize
-    heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[2]))
+    
+    # Create a model that maps the input image to the activations of the last conv layer
+    grad_model = tf.keras.Model([model.inputs], [last_conv_layer.output, model.output])
+    
+    # Use GradientTape to compute gradients
+    with tf.GradientTape() as tape:
+        conv_outputs, predictions = grad_model(img_tensor)
+        pred_index = tf.argmax(predictions[0])
+        class_channel = predictions[:, pred_index]
+    
+    # Compute gradients of the class output with respect to feature map
+    grads = tape.gradient(class_channel, conv_outputs)
+    
+    # Compute guided gradients
+    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+    
+    # Multiply each channel in the feature map array by "how important this channel is"
+    conv_outputs = conv_outputs[0]
+    heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
+    heatmap = tf.squeeze(heatmap)
+    
+    # Normalize the heatmap between 0 & 1 for visualization
+    heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+    heatmap = heatmap.numpy()
+    
+    # Resize heatmap to original image size
+    heatmap = cv2.resize(heatmap, (img.shape[2], img.shape[1]))
     heatmap = np.uint8(255 * heatmap)
     heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+    
+    # Resize original image and superimpose heatmap
     img2 = cv2.resize(array, (512, 512))
     hif = 0.8
     transparency = heatmap * hif
@@ -95,35 +126,66 @@ def grad_cam(array):
     return superimposed_img[:, :, ::-1]
 
 
+
 def predict(array):
+    """Predict pneumonia class and generate Grad-CAM heatmap.
+    
+    Args:
+        array: Input image array
+        
+    Returns:
+        tuple: (label, probability, heatmap)
+    """
     #   1. call function to pre-process image: it returns image in batch format
     batch_array_img = preprocess(array)
+    
     #   2. call function to load model and predict: it returns predicted class and probability
     model = model_fun()
-    # model_cnn = tf.keras.models.load_model('conv_MLP_84.h5')
-    prediction = np.argmax(model.predict(batch_array_img))
-    proba = np.max(model.predict(batch_array_img)) * 100
+    
+    # Make the prediction
+    predictions = model.predict(batch_array_img)
+    prediction = np.argmax(predictions)
+    proba = np.max(predictions) * 100
+    
+    # Map prediction to label
     label = ""
     if prediction == 0:
         label = "bacteriana"
-    if prediction == 1:
+    elif prediction == 1:
         label = "normal"
-    if prediction == 2:
+    elif prediction == 2:
         label = "viral"
+    
     #   3. call function to generate Grad-CAM: it returns an image with a superimposed heatmap
-    heatmap = grad_cam(array)
+    # Pass the already built model to avoid recreation
+    heatmap = grad_cam(array, model)
+    
     return (label, proba, heatmap)
 
 
 def read_dicom_file(path):
-    img = dicom.read_file(path)
-    img_array = img.pixel_array
-    img2show = Image.fromarray(img_array)
-    img2 = img_array.astype(float)
-    img2 = (np.maximum(img2, 0) / img2.max()) * 255.0
-    img2 = np.uint8(img2)
-    img_RGB = cv2.cvtColor(img2, cv2.COLOR_GRAY2RGB)
-    return img_RGB, img2show
+    try:
+        img = dicom.dcmread(path)
+        img_array = img.pixel_array
+        img2show = Image.fromarray(img_array)
+        img2 = img_array.astype(float)
+        img2 = (np.maximum(img2, 0) / img2.max()) * 255.0
+        img2 = np.uint8(img2)
+        img_RGB = cv2.cvtColor(img2, cv2.COLOR_GRAY2RGB)
+        return img_RGB, img2show
+    except Exception as e:
+        # If DICOM reading fails, try to force read or treat as regular image
+        try:
+            img = dicom.dcmread(path, force=True)
+            img_array = img.pixel_array
+            img2show = Image.fromarray(img_array)
+            img2 = img_array.astype(float)
+            img2 = (np.maximum(img2, 0) / img2.max()) * 255.0
+            img2 = np.uint8(img2)
+            img_RGB = cv2.cvtColor(img2, cv2.COLOR_GRAY2RGB)
+            return img_RGB, img2show
+        except:
+            raise Exception(f"No se pudo leer el archivo DICOM: {str(e)}")
 
 
 def read_jpg_file(path):
@@ -222,6 +284,14 @@ class App:
 
         #  se reconoce como un elemento de la clase
         self.array = None
+        
+        # Initialize label and proba to avoid AttributeError
+        self.label = None
+        self.proba = None
+        
+        # Initialize image attributes
+        self.img1 = None
+        self.img2 = None
 
         #   NUMERO DE IDENTIFICACIÓN PARA GENERAR PDF
         self.reportID = 0
@@ -242,16 +312,25 @@ class App:
             ),
         )
         if filepath:
-            self.array, img2show = read_dicom_file(filepath)
-            self.img1 = img2show.resize((250, 250), Image.ANTIALIAS)
-            self.img1 = ImageTk.PhotoImage(self.img1)
-            self.text_img1.image_create(END, image=self.img1)
-            self.button1["state"] = "enabled"
+            try:
+                # Check file extension to determine how to read
+                file_ext = filepath.lower().split('.')[-1]
+                if file_ext == 'dcm':
+                    self.array, img2show = read_dicom_file(filepath)
+                else:
+                    self.array, img2show = read_jpg_file(filepath)
+                
+                self.img1 = img2show.resize((250, 250), Image.LANCZOS)
+                self.img1 = ImageTk.PhotoImage(self.img1)
+                self.text_img1.image_create(END, image=self.img1)
+                self.button1["state"] = "enabled"
+            except Exception as e:
+                showinfo(title="Error", message=f"Error al cargar la imagen: {str(e)}")
 
     def run_model(self):
         self.label, self.proba, self.heatmap = predict(self.array)
         self.img2 = Image.fromarray(self.heatmap)
-        self.img2 = self.img2.resize((250, 250), Image.ANTIALIAS)
+        self.img2 = self.img2.resize((250, 250), Image.LANCZOS)
         self.img2 = ImageTk.PhotoImage(self.img2)
         print("OK")
         self.text_img2.image_create(END, image=self.img2)
@@ -259,6 +338,10 @@ class App:
         self.text3.insert(END, "{:.2f}".format(self.proba) + "%")
 
     def save_results_csv(self):
+        if self.label is None or self.proba is None:
+            showinfo(title="Error", message="Por favor, ejecute la predicción antes de guardar los resultados.")
+            return
+        
         with open("historial.csv", "a") as csvfile:
             w = csv.writer(csvfile, delimiter="-")
             w.writerow(
@@ -285,8 +368,15 @@ class App:
             self.text1.delete(0, "end")
             self.text2.delete(1.0, "end")
             self.text3.delete(1.0, "end")
-            self.text_img1.delete(self.img1, "end")
-            self.text_img2.delete(self.img2, "end")
+            self.text_img1.delete(1.0, "end")
+            self.text_img2.delete(1.0, "end")
+            # Reset attributes
+            self.label = None
+            self.proba = None
+            self.img1 = None
+            self.img2 = None
+            self.array = None
+            self.button1["state"] = "disabled"
             showinfo(title="Borrar", message="Los datos se borraron con éxito")
 
 
