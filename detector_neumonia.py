@@ -13,9 +13,57 @@ import tkcap
 import img2pdf
 import numpy as np
 import time
+
+# TensorFlow imports
+import tensorflow as tf
+from tensorflow.keras import backend as K
+
 tf.compat.v1.disable_eager_execution()
 tf.compat.v1.experimental.output_all_intermediates(True)
 import cv2
+
+# DICOM import
+import pydicom as dicom
+
+
+def model_fun():
+    """
+    Carga y retorna el modelo de CNN entrenado para clasificación de neumonía.
+    
+    Returns:
+        tf.keras.Model: Modelo entrenado para clasificar radiografías en:
+                       - 0: bacteriana
+                       - 1: normal  
+                       - 2: viral
+    
+    TODO: Implementar la carga del modelo real desde archivo .h5
+    """
+    # TODO: Descomentar cuando tengas el archivo del modelo
+    # return tf.keras.models.load_model('conv_MLP_84.h5')
+    
+    # Placeholder temporal - crear un modelo mock para testing
+    # ELIMINAR ESTA SECCIÓN cuando implementes la carga real del modelo
+    import warnings
+    warnings.warn(
+        "Usando modelo mock temporal. Implementa la carga real del modelo.",
+        UserWarning
+    )
+    
+    # Modelo mock simple para evitar errores
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+    
+    model = Sequential([
+        Conv2D(64, (3, 3), activation='relu', input_shape=(512, 512, 1), name='conv10_thisone'),
+        MaxPooling2D(2, 2),
+        Flatten(),
+        Dense(3, activation='softmax')
+    ])
+    
+    # Compilar modelo mock
+    model.compile(optimizer='adam', loss='categorical_crossentropy')
+    
+    return model
 
 
 def grad_cam(array):

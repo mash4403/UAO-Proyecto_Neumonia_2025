@@ -1,0 +1,21 @@
+[project]
+name = "uao-proyecto-neumonia-2025"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "img2pdf>=0.6.1",
+    "matplotlib>=3.10.6",
+    "numpy>=1.21.0",
+    "opencv-python>=4.11.0.86",
+    "pandas>=2.3.2",
+    "pillow>=11.3.0",
+    "pyautogui>=0.9.54",
+    "pydicom>=3.0.1",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "python-xlib>=0.33",
+    "tensorflow>=2.20.0",
+    "tkcap>=0.0.4",
+]
