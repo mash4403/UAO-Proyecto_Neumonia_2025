@@ -1,0 +1,38 @@
+# Usar imagen base más específica y ligera
+FROM python:3.11-slim
+
+# Instalar dependencias del sistema necesarias
+RUN apt-get update && apt-get install -y \
+    # Dependencias para OpenCV y procesamiento de imágenes
+    libgl1-mesa-dev libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 \
+    libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+    libgtk-3-0 libpng16-16 libjpeg-dev libopenexr-dev \
+    libtiff-dev libwebp-dev \
+    # Herramientas básicas
+    gcc g++ \
+    # Limpiar cache para reducir tamaño
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copiar solo los archivos de dependencias primero para mejor caching
+COPY requirements.txt .
+COPY requirements-docker.txt .
+
+# Instalar dependencias Python (sin GUI)
+RUN pip install --no-cache-dir -r requirements-docker.txt
+
+# Copiar código de la aplicación
+COPY detector_neumonia.py .
+COPY *.py .
+
+# Crear usuario no-root para seguridad
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Puerto por defecto (si planeas agregar API web)
+EXPOSE 8000
+
+# Comando por defecto para tests o API
+CMD ["python", "-m", "pytest", "-v"]
