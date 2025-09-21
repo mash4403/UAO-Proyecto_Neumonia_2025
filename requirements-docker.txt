@@ -2,7 +2,8 @@
 pillow>=9.0.0
 pydicom>=2.3.0
 opencv-python-headless>=4.7.0  # Version sin GUI dependencies
-tensorflow>=2.20.0
+tensorflow>=2.15.0  # Will be configured as CPU-only via code
+# Note: tensorflow-cpu package doesn't have 2.20.0, using regular tensorflow with CPU config
 numpy>=1.21.0
 matplotlib>=3.5.0  # Usar backend no-interactive
 pandas>=1.4.0

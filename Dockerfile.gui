@@ -1,0 +1,94 @@
+# Dockerfile para aplicaciones con GUI - Compatible Mac/Windows
+FROM python:3.11-slim
+
+# Variables de entorno para GUI
+ENV DISPLAY=:0.0
+ENV QT_X11_NO_MITSHM=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Instalar dependencias del sistema para GUI y ML
+RUN apt-get update && apt-get install -y \
+    # Dependencias GUI básicas
+    python3-tk \
+    python3-dev \
+    # X11 y GUI libraries
+    libx11-dev \
+    libxext-dev \
+    libxrender-dev \
+    libxtst6 \
+    libxi-dev \
+    libxrandr-dev \
+    libxss1 \
+    libxinerama-dev \
+    libxcursor-dev \
+    libxcomposite-dev \
+    libxdamage-dev \
+    libxfixes3 \
+    # OpenCV y procesamiento de imágenes
+    libgl1-mesa-dev \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libgomp1 \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
+    libgtk-3-0 \
+    libpng16-16 \
+    libjpeg-dev \
+    libopenexr-dev \
+    libtiff-dev \
+    libwebp-dev \
+    # Qt libraries para matplotlib y otras GUI
+    libqt5gui5 \
+    libqt5core5a \
+    libqt5widgets5 \
+    # Herramientas de construcción
+    gcc \
+    g++ \
+    # Fuentes para mejores visualizaciones
+    fonts-liberation \
+    # Limpiar cache
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY requirements.txt .
+
+# Crear archivo de requirements específico para GUI si no existe
+RUN if [ ! -f requirements-gui.txt ]; then \
+        echo "# Requirements for GUI version" > requirements-gui.txt && \
+        echo "matplotlib" >> requirements-gui.txt && \
+        echo "opencv-python" >> requirements-gui.txt && \
+        echo "Pillow" >> requirements-gui.txt && \
+        echo "tkinter" >> requirements-gui.txt && \
+        echo "PyQt5" >> requirements-gui.txt; \
+    fi
+
+# Instalar dependencias Python con GUI support
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir \
+    matplotlib \
+    opencv-python \
+    Pillow \
+    PyQt5
+
+# Copiar código de la aplicación
+COPY . .
+
+# Crear usuario no-root pero con permisos para GUI
+RUN useradd -m -u 1000 -s /bin/bash appuser && \
+    chown -R appuser:appuser /app && \
+    # Permitir acceso a X11
+    usermod -a -G audio,video appuser
+
+USER appuser
+
+# Variables de entorno específicas para el usuario
+ENV HOME=/home/appuser
+ENV PYTHONPATH=/app
+
+# Comando por defecto
+CMD ["python", "detector_neumonia.py"]

@@ -18,13 +18,21 @@ import time
 import tensorflow as tf
 from tensorflow.keras import backend as K
 
-# Enable eager execution for modern TensorFlow compatibility
-# Wrap in try-except to handle mocking scenarios or older TF versions
+# Configure TensorFlow for CPU-only operation
 try:
+    # Force CPU-only execution
+    tf.config.set_visible_devices([], 'GPU')
+    
+    # Enable eager execution for modern TensorFlow compatibility
     if hasattr(tf, 'config') and hasattr(tf.config, 'run_functions_eagerly'):
         tf.config.run_functions_eagerly(True)
+    
+    # Optimize CPU performance
+    tf.config.threading.set_inter_op_parallelism_threads(0)  # Use all available cores
+    tf.config.threading.set_intra_op_parallelism_threads(0)  # Use all available cores
+    
 except (AttributeError, Exception):
-    # If config doesn't exist or method fails, continue without eager execution
+    # If config doesn't exist or method fails, continue without configuration
     pass
 import cv2
 

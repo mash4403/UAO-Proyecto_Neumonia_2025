@@ -17,7 +17,10 @@ services:
     environment:
       - PYTHONPATH=/app
       - MATPLOTLIB_BACKEND=Agg  # Backend sin GUI
-    command: python -m pytest -v
+      - TF_CPP_MIN_LOG_LEVEL=2  # Reduce TensorFlow logging
+      - OMP_NUM_THREADS=4       # Limit CPU threads for container
+      - KMP_BLOCKTIME=1         # Optimize CPU performance
+    command: python verify_cpu_setup.py
     
   # Servicio para API web (futuro)
   api:

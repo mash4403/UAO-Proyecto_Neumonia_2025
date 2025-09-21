@@ -1,0 +1,18 @@
+# Requirements para Mac/Linux
+pyautogui>=0.9.54
+pillow>=10.0.0
+tkcap>=1.0.5
+pydicom>=2.4.3
+img2pdf>=0.4.4
+opencv-python>=4.8.0
+matplotlib>=3.7.0
+pandas>=2.0.0
+tensorflow>=2.13.0
+python-xlib>=0.33  # Solo para Mac/Linux
+# Testing dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+numpy>=1.21.0
+# GUI específico para Mac
+tkinter  # Viene incluido en Python en Mac pero mejor explícito
